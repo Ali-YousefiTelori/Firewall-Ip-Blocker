@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
 using WindowsFirewallHelper;
 using WindowsFirewallHelper.Addresses;
@@ -34,26 +33,39 @@ namespace Firewall_Ip_Blocker.WindowsConsole
                             IpAddresses.Add(ip);
                         }
                     }
-                    var roles = FirewallManager.Instance.Rules.Where(x => x.Name == roleName).FirstOrDefault();
-                    var allBlockedIps = roles.RemoteAddresses;
-                    List<WindowsFirewallHelper.IAddress> blockedIps = new List<IAddress>();
-                    blockedIps.AddRange(allBlockedIps);
-                    foreach (var ip in IpAddresses)
+                    var roles = FirewallManager.Instance.Rules.Where(x => x.Name == roleName).ToList();
+                    foreach (var role in roles)
                     {
-                        if (!blockedIps.Any(x => ((SingleIP)x).ToString() == ip))
+                        var allBlockedIps = role.RemoteAddresses;
+                        List<WindowsFirewallHelper.IAddress> blockedIps = new List<IAddress>();
+                        blockedIps.AddRange(allBlockedIps);
+                        Console.WriteLine($"Found {allBlockedIps.Length}");
+                        foreach (var ip in IpAddresses)
                         {
-                            blockedIps.Add(new SingleIP(IPAddress.Parse(ip).GetAddressBytes()));
-                            Console.WriteLine($"New Ip Blocked {ip}");
+                            if (!blockedIps.Any(x => ((SingleIP)x).ToString() == ip))
+                            {
+                                try
+                                {
+                                    if (ip == "-")
+                                        continue;
+                                    blockedIps.Add(new SingleIP(IPAddress.Parse(ip).GetAddressBytes()));
+                                    Console.WriteLine($"New Ip Blocked {ip}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"Error on Ip: {ip} {ex}");
+                                }
+                            }
                         }
+                        role.RemoteAddresses = blockedIps.ToArray();
                     }
-                    roles.RemoteAddresses = blockedIps.ToArray();
-
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex);
                     break;
                 }
+                Console.WriteLine("Completed");
                 Task.Delay(30000).Wait();
             }
             Console.WriteLine("done");
