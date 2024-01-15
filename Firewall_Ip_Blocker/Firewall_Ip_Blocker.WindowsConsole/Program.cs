@@ -20,19 +20,9 @@ namespace Firewall_Ip_Blocker.WindowsConsole
                 try
                 {
                     Console.WriteLine("Check new Ip to block!");
-                    EventLog log = new EventLog("Security");
-                    var entries = log.Entries.Cast<EventLogEntry>().Where(x => x.InstanceId == 4625).ToList();
-                    List<string> IpAddresses = new List<string>();
-                    foreach (var entry in entries)
-                    {
-                        if (entry.Message.Contains("An account failed to log on."))
-                        {
-                            var split = entry.Message.Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                            var find = split.FirstOrDefault(x => x.Contains("Source Network Address"));
-                            var ip = find.Split(':')[1].Trim();
-                            IpAddresses.Add(ip);
-                        }
-                    }
+                    var ipAddresses = new List<string>();
+                    ipAddresses.AddRange(GetWindowsLoginErrorIps());
+                    ipAddresses.AddRange(GetSQLLoginErrorIps());
                     var roles = FirewallManager.Instance.Rules.Where(x => x.Name == roleName).ToList();
                     foreach (var role in roles)
                     {
@@ -40,7 +30,7 @@ namespace Firewall_Ip_Blocker.WindowsConsole
                         List<WindowsFirewallHelper.IAddress> blockedIps = new List<IAddress>();
                         blockedIps.AddRange(allBlockedIps);
                         Console.WriteLine($"Found {allBlockedIps.Length}");
-                        foreach (var ip in IpAddresses)
+                        foreach (var ip in ipAddresses)
                         {
                             if (!blockedIps.Any(x => ((SingleIP)x).ToString() == ip))
                             {
@@ -70,6 +60,45 @@ namespace Firewall_Ip_Blocker.WindowsConsole
             }
             Console.WriteLine("done");
             Console.ReadLine();
+        }
+
+        static List<string> GetWindowsLoginErrorIps()
+        {
+            EventLog log = new EventLog("Security");
+            //login error logs
+            var entries = log.Entries.Cast<EventLogEntry>().Where(x => x.InstanceId == 4625).ToList();
+            List<string> IpAddresses = new List<string>();
+            foreach (var entry in entries)
+            {
+                if (entry.Message.Contains("An account failed to log on."))
+                {
+                    var split = entry.Message.Split(new string[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
+                    var find = split.FirstOrDefault(x => x.Contains("Source Network Address"));
+                    var ip = find.Split(':')[1].Trim();
+                    IpAddresses.Add(ip);
+                    Console.WriteLine($"Windows Login Ip found: {ip}");
+                }
+            }
+            return IpAddresses;
+        }
+
+        static List<string> GetSQLLoginErrorIps()
+        {
+            EventLog log = new EventLog("Application");
+            //login error logs
+            var entries = log.Entries.Cast<EventLogEntry>();
+            List<string> IpAddresses = new List<string>();
+            foreach (var entry in entries)
+            {
+                if (entry.Message.Contains("Login failed for user"))
+                {
+                    var split = entry.Message.Split("CLIENT:", StringSplitOptions.RemoveEmptyEntries);
+                    var ip = split.LastOrDefault().Trim().Trim(']').Trim();
+                    IpAddresses.Add(ip);
+                    Console.WriteLine($"Sql Login Ip found: {ip}");
+                }
+            }
+            return IpAddresses;
         }
     }
 }
